@@ -14,7 +14,7 @@ This API lets you:
 
 ## Install
 
-JavaSkype requires Java >= 8 to run. You can get this library using Maven by adding this to your ```pom.xml```:
+JavaMP3 requires Java >= 8 to run. You can get this library using Maven by adding this to your ```pom.xml```:
 
 ```xml
  <dependencies>
