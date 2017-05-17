@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>fr.delthas</groupId>
   <artifactId>javamp3</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>1.0.0</version>
 
   <name>JavaMP3</name>
   <url>https://github.com/delthas/javamp3</url>
