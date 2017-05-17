@@ -29,7 +29,7 @@ JavaSkype requires Java >= 8 to run. You can get this library using Maven by add
 
 ## Quick example
 
-This library is Object-oriented: you can use one of the several static functions in the Sound class to get a Sound object, and then call methods on it to get data and metadata. Let's have a look at how to interact with the library.
+This library is object-oriented: you can use one of the several static functions in the Sound class to get a Sound object, and then call methods on it to get data and metadata. Let's have a look at how to interact with the library.
 
 
 There are several ways to get a Sound object (ie decoding MPEG data) :
@@ -42,7 +42,6 @@ Sound sound = Sound.createSound(path); // throws IOException if an error occured
 // Getting and decoding a sound from a resource file in your JAR
 InputStream in = MyClass.class.getResourceAsStream("/mp3/rick_astley.mp3");
 Sound sound = Sound.createSound(in) // throws IOException if an error occured while reading the resource file or decoding its data
-}
 
 // You can also decode a sound from a byte array, see the library Javadoc
 ```
@@ -73,7 +72,7 @@ The only public class is the Sound class.
 
 The javadoc for the API is located at: https://mpeg.delthas.fr/
 
-This API full supports multithread calls, there is no shared static state. For example, if trying to decode multiple MPEG files from a music folder, you are encouraged to use multiple threads.
+This API fully supports multithreaded calls, there is no shared static state. For example, if trying to decode multiple MPEG files from a music folder, you are encouraged to use multiple threads.
 
 ## Building
 
