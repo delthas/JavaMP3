@@ -96,7 +96,7 @@ Simply run ```maven package```.
 
 ### Tech
 
-JavaSkype uses no library except the standard Java library.:
+JavaMP3 uses no library except the standard Java library.
 
 ### License
 
