@@ -107,12 +107,16 @@ final class Decoder {
       if (stereo == -1) {
         if (mode == 0b11 /* single_channel */) {
           stereo = 0;
-          synthOffset = new int[]{64};
-          synthBuffer = new float[1024];
+          if (layer != 0b01 /* layer III */) {
+            synthOffset = new int[]{64};
+            synthBuffer = new float[1024];
+          }
         } else {
           stereo = 1;
-          synthOffset = new int[]{64, 64};
-          synthBuffer = new float[2 * 1024];
+          if (layer != 0b01 /* layer III */) {
+            synthOffset = new int[]{64, 64};
+            synthBuffer = new float[2 * 1024];
+          }
         }
       }
       
@@ -153,7 +157,13 @@ final class Decoder {
           samples += synth(baos, sampleDecoded, synthOffset, synthBuffer, 2);
         }
       } else if (layer == 0b01 /* layer III */) {
-        // TODO
+        if (mode == 0b11 /* single_channel */) {
+          sampleDecoded = samples_II(buffer, 1, -1, bitrate, frequency);
+        } else if (mode == 0b0 /* stereo */ || mode == 0b10 /* dual_channel */) {
+          sampleDecoded = samples_II(buffer, 2, -1, bitrate, frequency);
+        } else if (mode == 0b01 /* intensity_stereo */) {
+          sampleDecoded = samples_II(buffer, 2, bound, bitrate, frequency);
+        }
       }
       
       if (buffer.current != 0) {
