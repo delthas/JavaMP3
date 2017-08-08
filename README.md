@@ -92,7 +92,7 @@ alBufferData(buffer, sound.isStereo() ? AL_FORMAT_STEREO16 : AL_FORMAT_MONO16, d
 
 The only public class is the Sound class.
 
-The javadoc for the API is located at: http://www.javadoc.io/doc/fr.delthas/javamp3/
+The javadoc for the API is located here: [![Javadocs](http://www.javadoc.io/badge/fr.delthas/javamp3.svg)](http://www.javadoc.io/doc/fr.delthas/javamp3).
 
 You are encouraged to read the decoded data stream in a streaming way, and/or make use of multithreaded calls (i.e. decode the sound data in a background thread if your application needs to react in real-time to user input).
 
