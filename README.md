@@ -1,3 +1,6 @@
+![](https://img.shields.io/travis/Delthas/JavaMP3.svg) 
+![](https://img.shields.io/github/license/Delthas/JavaMP3.svg)
+![](https://img.shields.io/maven-central/v/fr.Delthas/JavaMP3.svg)
 # JavaMP3
 
 **Currently supports MPEG-1 Layer I/II/III (that is, most MP1, MP2, and MP3 files)**
