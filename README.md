@@ -20,7 +20,7 @@ JavaMP3 requires Java >= 8 to run. You can get this library using Maven by addin
     <dependency>       
            <groupId>fr.delthas</groupId>
            <artifactId>javamp3</artifactId>
-           <version>1.0.0</version>
+           <version>1.0.1</version>
     </dependency>
 </dependencies>
 ```
