@@ -2,137 +2,247 @@ package fr.delthas.javamp3;
 
 import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
-import java.io.BufferedInputStream;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import javax.swing.text.html.HTMLDocument;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 
 /**
- * A sound object, that stores decoded PCM sound data, and some associated metadata such as sampling frequency.
+ * A sound object, that represents an input stream of uncompressed PCM sound data samples, decoded from encoded MPEG data.
  * <p>
- * To create a sound object from encoded MPEG data (MP1/MP2/MP3), use one of the {@code createSound} methods.
+ * To create a sound object from encoded MPEG data (MP1/MP2/MP3), simply use {@link #Sound(InputStream)}. The decoding process will be done as data is read from this stream. You may also, as a convenience, write all the (remaining) decoded data into an {@link OutputStream} using {@link #decodeFullyInto(OutputStream)}.
  * <p>
- * To get the raw decoded PCM samples (for example to feed it to an OpenAL buffer), use {@link Sound#getBytes()}.
- * To get a {@link javax.sound.sampled.Clip} from the decoded data, use {@link Sound#getAudioFormat()} or {@link Sound#newAudioInputStream()}.
+ * You may use the several metadata functions such as {@link #getSamplingFrequency()} to get data about the sound. You may use {@link #getAudioFormat()} to get the sound audio format, to be used with the {@link javax.sound.sampled} API.
  *
- * @see Sound#getBytes()
- * @see Sound#getAudioFormat()
- * @see Sound#newAudioInputStream()
+ * See the project README (on Github) for some context and various examples on how to use the library.
+ *
+ * @see Sound#Sound(InputStream)
+ * @see Sound#decodeFullyInto(OutputStream)
  */
-public final class Sound {
-  private final byte[] bytes;
-  private final int samplingFrequency;
-  private final boolean stereo;
-  private final int samplesCount;
+public final class Sound extends FilterInputStream {
+  private Decoder.SoundData soundData;
+  private int index;
   private AudioFormat audioFormat;
   
-  Sound(byte[] bytes, int samplingFrequency, boolean stereo, int samplesCount) {
-    this.bytes = bytes;
-    this.samplingFrequency = samplingFrequency;
-    this.stereo = stereo;
-    this.samplesCount = samplesCount;
-  }
-  
   /**
-   * Creates a new {@link Sound} from the encoded MPEG data stored in the array, starting at {@code offset} inclusive and ending at {@code offset+length} exclusive, by <b>decoding it fully</b>.
+   * Creates a new Sound, that will read from the specified encoded MPEG data stream.
    * <p>
-   * The array will <b>NOT BE COPIED</b> and will be continuously read during the decoding process. However you can change the array when this method returns since it's only used during the decoding process.
+   * This method will try to read the very beginning of the MPEG stream (i.e. 1 MPEG frame) to get its sampling frequency and various other metadata. <b>A stream containing no MPEG data frames/a zero duration MPEG data source will be considered as invalid and will throw {@link IOException}.</b>
    * <p>
-   * This method will return {@code null} if there are no MPEG data frames.
+   * This method will not read or decode the file fully, which means it doesn't block and is very fast (as opposed to {@link #decodeFullyInto(OutputStream)}; you probably don't need to execute this method in a specific background thread.
+   * <p>It is only when reading from this stream that the decoding process will take place (as you read from the stream). <b>The decoding process is quite CPU-intensive, though, so you are encouraged to use a background thread/other multithreading techniques to read from the stream without blocking the whole application.</b>
    * <p>
-   * This method will block for the whole duration of the decoding process, which might take several seconds. You can call this method from multiple threads concurrently as there is no shared static state.
-   *
-   * @param data   The array containing the encoded MPEG data.
-   * @param offset The start index (inclusive) of the data in the array.
-   * @param length The length of the data in bytes in the array.
-   * @return A new {@link Sound} containing the decoded PCM data from the encoded MPEG data, or null if there are no MPEG data frames in the MPEG data.
-   * @throws IOException If there's an unexpected EOF during an MPEG frame, or if there's an error while decoding the MPEG data.
+   * The various metadata methods such as {@link #getSamplingFrequency()} and {@link #isStereo()} may be called as soon as this object is instantiated (i.e. may be called at any time during the object lifetime).
+   * <p>
+   * <b>The data layout is as follows (this is a contract that won't change):</b>
+   * <br>The decoded PCM sound data is stored as a contiguous stream of 16-bit little-endian signed samples (2 bytes per sample).
+   * <ul>
+   * <li>If the sound is in stereo mode, then the samples will be interleaved, e.g. {@code left_sample_0 (2 bytes), right_sample_0 (2 bytes), left_sample_1 (2 bytes), right_sample_1 (2 bytes), ...}
+   * <li>If the sound is in mono mode, then the samples will be contiguous, e.g. {@code sample_0 (2 bytes), sample_1 (2 bytes), ...}
+   * </ul>
+   * @param in The input stream from which to read the encoded MPEG data, must be non-null.
+   * @throws IOException If an {@link IOException} is thrown when reading the underlying stream, or if there's an unexpected EOF during an MPEG frame, or if there's an error while decoding the MPEG data, e.g. if there's no MPEG data in the specified stream.
    */
-  public static Sound createSound(byte[] data, int offset, int length) throws IOException {
-    try (ByteArrayInputStream in = new ByteArrayInputStream(data, offset, length)) {
-      return createSound_(in);
+  public Sound(InputStream in) throws IOException {
+    super(Objects.requireNonNull(in, "The specified InputStream must be non-null!"));
+    soundData = Decoder.init(in);
+    if(soundData == null) {
+      throw new IOException("No MPEG data in the specified input stream!");
     }
   }
   
   /**
-   * Creates a new {@link Sound} from the encoded MPEG data stored in the array, by <b>decoding it fully</b>.
+   * {@inheritDoc}
    * <p>
-   * The array will <b>NOT BE COPIED</b> and will be continuously read during the decoding process. However you can change the array when this method returns since it's only used during the decoding process.
-   * <p>
-   * This method will return {@code null} if there are no MPEG data frames.
-   * <p>
-   * This method will block for the whole duration of the decoding process, which might take several seconds. You can call this method from multiple threads concurrently as there is no shared static state.
-   *
-   * @param data The array containing the encoded MPEG data.
-   * @return A new {@link Sound} containing the decoded PCM data from the encoded MPEG data, or null if there are no MPEG data frames in the MPEG data.
-   * @throws IOException If there's an unexpected EOF during an MPEG frame, or if there's an error while decoding the MPEG data.
+   * Refer to this class documentation for the decoded data layout.
    */
-  public static Sound createSound(byte[] data) throws IOException {
-    try (ByteArrayInputStream in = new ByteArrayInputStream(data)) {
-      return createSound_(in);
+  @Override
+  public int read() throws IOException {
+    if(index == -1)
+      return -1;
+    if(index == soundData.samplesBuffer.length) {
+      if(!Decoder.decodeFrame(soundData)) {
+        index = -1;
+        soundData.samplesBuffer = null;
+        return -1;
+      }
+      index = 1;
+      return soundData.samplesBuffer[0] & 0xFF;
     }
+    return soundData.samplesBuffer[index++] & 0xFF;
+  }
+  
+  
+  /**
+   * {@inheritDoc}
+   * <p>
+   * Refer to this class documentation for the decoded data layout.
+   */
+  @Override
+  public int read(byte[] b) throws IOException {
+    return read(b, 0, b.length);
   }
   
   /**
-   * Creates a new {@link Sound} from the encoded MPEG data to be read from the input stream, by <b>decoding it fully</b>.
+   * {@inheritDoc}
    * <p>
-   * This method will return {@code null} if there are no MPEG data frames.
-   * <p>
-   * This method will block for the whole duration of the decoding process, which might take several seconds. You can call this method from multiple threads concurrently as there is no shared static state.
-   *
-   * @param in The input stream from which to read the encoded MPEG data.
-   * @return A new {@link Sound} containing the decoded PCM data from the encoded MPEG data, or null if there are no MPEG data frames in the read MPEG data.
-   * @throws IOException If an {@link IOException} is thrown when reading the stream, or if there's an unexpected EOF during an MPEG frame, or if there's an error while decoding the MPEG data.
+   * Refer to this class documentation for the decoded data layout.
    */
-  public static Sound createSound(InputStream in) throws IOException {
-    return createSound_(in);
-  }
-  
-  /**
-   * Creates a new {@link Sound} from the encoded MPEG data to be read from the file, by <b>decoding it fully</b>. You should only pass {@code .mp1}, {@code .mp2}, and {@code .mp3} files to this method are these are the only extensions for the supported audio formats for the decoding process.
-   * <p>
-   * This method will return {@code null} if there are no MPEG data frames.
-   * <p>
-   * This method will block for the whole duration of the decoding process, which might take several seconds. You can call this method from multiple threads concurrently as there is no shared static state.
-   *
-   * @param path The file from which to read the encoded MPEG data.
-   * @return A new {@link Sound} containing the decoded PCM data from the encoded MPEG data, or null if there are no MPEG data frames in the read MPEG data.
-   * @throws IOException If an {@link IOException} is thrown when reading the file, or if there's an unexpected EOF during an MPEG frame, or if there's an error while decoding the MPEG data.
-   */
-  public static Sound createSound(Path path) throws IOException {
-    try (BufferedInputStream in = new BufferedInputStream(Files.newInputStream(path))) {
-      return createSound_(in);
+  @Override
+  public int read(byte[] b, int off, int len) throws IOException {
+    if (b == null) {
+      throw new NullPointerException();
+    } else if (off < 0 || len < 0 || len > b.length - off) {
+      throw new IndexOutOfBoundsException();
+    } else if (len == 0) {
+      return 0;
     }
-  }
-  
-  private static Sound createSound_(InputStream in) throws IOException {
-    return Decoder.decode(in);
+    if(index == -1)
+      return -1;
+    int len_ = len;
+    while(len > 0) {
+      if(index == soundData.samplesBuffer.length) {
+        if(!Decoder.decodeFrame(soundData)) {
+          index = -1;
+          soundData.samplesBuffer = null;
+          return len_ == len ? -1 : len_ - len;
+        }
+        index = 0;
+      }
+      int remaining = soundData.samplesBuffer.length - index;
+      if(remaining > 0) {
+        if(remaining >= len) {
+          System.arraycopy(soundData.samplesBuffer, index, b, off, len);
+          index += len;
+          return len_;
+        }
+        System.arraycopy(soundData.samplesBuffer, index, b, off, remaining);
+        off += remaining;
+        len -= remaining;
+        index = soundData.samplesBuffer.length;
+      }
+    }
+    throw new IllegalStateException("Shouldn't happen (internal error)");
   }
   
   /**
-   * Returns the decoded PCM sound data, as a contiguous array of 16-bit little-endian signed samples (2 bytes per sample).
-   * If the sound is in stereo mode, then the samples will be interleaved, e.g. {@code left_sample_0 (2 bytes), right_sample_0 (2 bytes), left_sample_1 (2 bytes), right_sample_1 (2 bytes), ...}
-   * If the sound is in mono mode, then the samples will be contiguous, e.g. {@code sample_0 (2 bytes), sample_1 (2 bytes), ...}
+   * {@inheritDoc}
    * <p>
-   * <b>The bytes returned are NOT COPIED from the internal sound object byte array, to improve performance. All calls on this method will return the same array. Please copy the returned array yourself if you need to get a copy of it.</b>
-   *
-   * @return The decoded PCM sound data as described above.
+   * <b>Fast MPEG seeking isn't implemented yet, so calling this method will still compute all frames to be skipped.</b>
    */
-  public byte[] getBytes() {
-    return bytes;
+  @Override
+  public long skip(long n) throws IOException {
+    // TODO add MPEG seeking
+    return super.skip(n);
   }
   
   /**
-   * Returns the sampling frequency of this sound, that is the number of samples per second, in Hertz (Hz).
+   * {@inheritDoc}
+   * <p>
+   * <b>This method returns the number of bytes that can be read until a new MPEG frame has to be read and decoded/processed.</b>
+   */
+  @Override
+  public int available() throws IOException {
+    if(soundData.samplesBuffer == null)
+      return 0;
+    return soundData.samplesBuffer.length - index;
+  }
+  
+  /**
+   * Closes the underlying input stream and frees up allocated memory.
+   * <p>
+   * You may still call metadata-related methods (e.g. {@link #isStereo()}) after calling this method.
+   *
+   * @throws IOException If an {@link IOException} is thrown when closing the underlying stream.
+   */
+  @Override
+  public void close() throws IOException {
+    if(in != null) {
+      in.close();
+      in = null;
+      soundData.samplesBuffer = null;
+    }
+    index = -1;
+  }
+  
+  /**
+   * Does nothing.
+   * <p>
+   * Setting a mark and resetting to the mark isn't supported.
+   *
+   * @param readlimit Ignored.
+   */
+  @Override
+  public synchronized void mark(int readlimit) {
+    super.mark(readlimit);
+  }
+  
+  /**
+   * Throws an IOException.
+   * <p>
+   * Setting a mark and resetting to the mark isn't supported.
+   *
+   * @throws IOException Always, because setting a mark and resetting to it isn't supported.
+   */
+  @Override
+  public synchronized void reset() throws IOException {
+    throw new IOException("mark/reset not supported");
+  }
+  
+  /**
+   * Returns false.
+   * <p>
+   * Setting a mark and resetting to the mark isn't supported.
+   *
+   * @return false, always.
+   */
+  @Override
+  public boolean markSupported() {
+    return false;
+  }
+  
+  
+  /**
+   * Fully copy the remaining bytes of this (decoded PCM sound data samples) stream into the specified {@link OutputStream}, that is, fully decodes the rest of the sound and copies the decoded data into the {@link OutputStream}.
+   * <p>
+   * This method is simply a convenience wrapper for the following code: {@code copy(this, os)}, where {@code copy} is a method that would fully copy a stream into another.
+   * <p>
+   * This method <b>is blocking</b> and the MPEG decoding process <b>might take a long time, e.g. a few seconds for a sample music track</b>. You are encouraged to call this method e.g. from a background thread.
+   * <p>
+   * The exact layout of the PCM data produced by this stream is described in this class documentation.
+   *
+   * @param os The output stream in which to put the decoded raw PCM sound samples, must be non-null.
+   * @return The number of <b>BYTES</b> that were written into the output steam. <b>This is different from the number of samples that were written.</b>
+   * @throws IOException If an {@link IOException} is thrown when reading the underlying stream, or if there's an unexpected EOF during an MPEG frame, or if there's an error while decoding the MPEG data.
+   */
+  public int decodeFullyInto(OutputStream os) throws IOException {
+    Objects.requireNonNull(os);
+    if(index == -1)
+      return 0;
+    int remaining = soundData.samplesBuffer.length - index;
+    if(remaining > 0) {
+      os.write(soundData.samplesBuffer, index, remaining);
+    }
+    int read = remaining;
+    while(!Decoder.decodeFrame(soundData)) {
+      os.write(soundData.samplesBuffer);
+      read += soundData.samplesBuffer.length;
+    }
+    soundData.samplesBuffer = null;
+    index = -1;
+    return read;
+  }
+  
+  /**
+   * Returns the sampling frequency of this sound, that is its of samples per second, in Hertz (Hz).
    * <p>
    * For example for a 48kHz sound this would return {@code 48000}.
    *
    * @return The sampling frequency of the sound in Hertz.
    */
   public int getSamplingFrequency() {
-    return samplingFrequency;
+    return soundData.frequency;
   }
   
   /**
@@ -141,53 +251,21 @@ public final class Sound {
    * @return {@code true} if the sound is in stereo mode.
    */
   public boolean isStereo() {
-    return stereo;
-  }
-  
-  /**
-   * Returns the number of samples of this sound.
-   *
-   * @return The number of samples of this sound.
-   * @see #getLength()
-   */
-  public int getSamplesCount() {
-    return samplesCount;
+    return soundData.stereo == 1;
   }
   
   /**
    * Returns the {@link AudioFormat} of this sound, to be used with the {@link javax.sound.sampled} API.
+   * <p>
+   * You may refer to the project README on Github for example uses of this method.
    *
    * @return The {@link AudioFormat} of this sound.
    */
   public AudioFormat getAudioFormat() {
     if (audioFormat == null) {
-      audioFormat = new AudioFormat(samplingFrequency, 16, stereo ? 2 : 1, true, false);
+      audioFormat = new AudioFormat(getSamplingFrequency(), 16, isStereo() ? 2 : 1, true, false);
     }
     return audioFormat;
   }
   
-  /**
-   * Returns the length of this sound in seconds.
-   * <p>
-   * This method is equivalent to {@code (float)getSamplesCount() / getSamplingFrequency() / (isStereo() ? 2 : 1)}.
-   *
-   * @return The length of this sound in seconds.
-   * @see #getSamplesCount()
-   */
-  public float getLength() {
-    return (float) getSamplesCount() / getSamplingFrequency() / (isStereo() ? 2 : 1);
-  }
-  
-  /**
-   * Creates a new {@link AudioInputStream} of this sound, to be used with the {@link javax.sound.sampled} API.
-   * <p>
-   * This will return a new input stream each time this method is called, so you may call this multiple times and/or concurrently.
-   * <p>
-   * This method is equivalent to : {@code return new AudioInputStream(new ByteArrayInputStream(getBytes()), getAudioFormat(), getSamplesCount());}.
-   *
-   * @return A new {@link AudioInputStream} for this sound.
-   */
-  public AudioInputStream newAudioInputStream() {
-    return new AudioInputStream(new ByteArrayInputStream(getBytes()), getAudioFormat(), getSamplesCount());
-  }
 }
