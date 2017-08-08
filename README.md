@@ -48,14 +48,12 @@ try(Sound sound = new Sound(new BufferedInputStream(Files.newInputStream(path)))
 
 // Another example: getting and decoding a sound from a resource file in your JAR
 try(Sound sound = new Sound(new BufferedInputStream(MyClass.class.getResourceAsStream("/mp3/rick_astley.mp3")))) {
-  
   // ...
-  
 }
 
 ```
 
-As expected from an InputStream, the creation of the stream will **not block**, and it is only when reading bytes from the stream, that the processing will take place (for the Sound class, that is the MPEG decoding process). You may get metadata about the sound as soon as you have instantiated it.
+As expected from an InputStream, the creation of the stream will not block, and it is only when reading bytes from the stream, that the decoding process will take place. You may get metadata about the sound as soon as you have instantiated it.
 
 Let's have a look at some examples on how to use the decoded raw PCM sound data samples:
 
@@ -80,6 +78,7 @@ Sound sound = /* ... */;
 // Let's store the whole decoded data in an array, because we need the number of samples; it's okay for short sounds
 ByteArrayOutputStream os = new ByteArrayOutputStream();
 int read = sound.decodeFullyInto(os);
+// LWJGL API stuff ...
 ByteBuffer data = BufferUtils.createByteBuffer(read);
 data.put(os.toByteArray()).flip(); // LWJGL needs a direct buffer, cannot simply wrap the BAOS array
 alBufferData(buffer, sound.isStereo() ? AL_FORMAT_STEREO16 : AL_FORMAT_MONO16, data, sound.getSamplingFrequency());
