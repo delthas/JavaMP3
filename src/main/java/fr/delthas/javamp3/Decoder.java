@@ -1737,7 +1737,7 @@ final class Decoder {
   private static int read(MainDataReader reader, int bits) {
     int number = 0;
     while (bits > 0) {
-      int advance = Integer.min(bits, 8 - reader.current);
+      int advance = Math.min(bits, 8 - reader.current);
       bits -= advance;
       reader.current += advance;
       number |= ((reader.array[reader.index] >>> (8 - reader.current)) & (0xFF >>> (8 - advance))) << bits;
@@ -1752,7 +1752,7 @@ final class Decoder {
   private static int read(Buffer buffer, int bits) throws IOException {
     int number = 0;
     while (bits > 0) {
-      int advance = Integer.min(bits, 8 - buffer.current);
+      int advance = Math.min(bits, 8 - buffer.current);
       bits -= advance;
       buffer.current += advance;
       if (bits != 0 && buffer.lastByte == -1) {
