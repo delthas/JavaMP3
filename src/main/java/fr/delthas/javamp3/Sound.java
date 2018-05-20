@@ -225,7 +225,7 @@ public final class Sound extends FilterInputStream {
       os.write(soundData.samplesBuffer, index, remaining);
     }
     int read = remaining;
-    while(!Decoder.decodeFrame(soundData)) {
+    while(Decoder.decodeFrame(soundData)) {
       os.write(soundData.samplesBuffer);
       read += soundData.samplesBuffer.length;
     }
