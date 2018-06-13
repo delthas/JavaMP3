@@ -1,7 +1,6 @@
-![](https://img.shields.io/travis/Delthas/JavaMP3.svg) 
-![](https://img.shields.io/github/license/Delthas/JavaMP3.svg)
-![](https://img.shields.io/maven-central/v/fr.delthas/javamp3.svg)
 # JavaMP3
+
+This is a fork of [delthas' Java MP3 decoding library](https://github.com/delthas/JavaMP3), incorporating fixes by [josephx86](https://github.com/josephx86/JavaMP3) as well as myself.
 
 **Currently supports MPEG-1 Layer I/II/III (that is, most MP1, MP2, and MP3 files)**
 
@@ -16,18 +15,11 @@ This API lets you:
 
 ## Install
 
-JavaMP3 requires Java >= 8 to run. You can get this library using Maven by adding this to your ```pom.xml```:
+JavaMP3 requires Java >= 8 to run.
 
-```xml
- <dependencies>
-    <dependency>       
-           <groupId>fr.delthas</groupId>
-           <artifactId>javamp3</artifactId>
-           <version>1.0.1</version>
-    </dependency>
-</dependencies>
-```
+* For the latest built jars of this fork, check this repository's [releases](https://github.com/kevinstadler/JavaMP3/releases) page.
 
+* delthas' original version of the library (v 1.0.1) is also available from Maven, see the instructions [here](https://github.com/delthas/JavaMP3#install).
 
 ## Quick example
 
