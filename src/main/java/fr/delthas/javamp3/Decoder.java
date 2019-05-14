@@ -428,9 +428,19 @@ final class Decoder {
     SoundData soundData = new SoundData();
     soundData.buffer = new Buffer(in);
     soundData.buffer.lastByte = soundData.buffer.in.read();
-    if(!decodeFrame(soundData))
-      return null;
-    return soundData;
+
+    // FIXME handle IOException thrown by decodeFrame during decoding of a bogus frame
+    if (Decoder.decodeFrame(soundData)) {
+      // require directly adjacent second frame (actually allow up to two bytes
+      // away because of some quirks with Layer III decoding)
+      FrameHeader adjacentHeader = Decoder.findNextHeader(soundData, 2);
+      if (adjacentHeader != null) {
+        // unwind inputstream to before the second header
+        adjacentHeader.unread(soundData);
+        return soundData;
+      }
+    }
+    return null;
   }
 
   private static FrameHeader findNextHeader(SoundData soundData) {
@@ -474,9 +484,9 @@ final class Decoder {
         return false;
       }
 
-      if (header.bitrateIndex == 0) {
-        System.err.println("MP3 decoder warning: files with free bitrate not supported");
-      }
+//      if (header.bitrateIndex == 0) {
+//        System.err.println("MP3 decoder warning: files with free bitrate not supported");
+//      }
       
       if (soundData.frequency == -1) {
         soundData.frequency = SAMPLING_FREQUENCY[header.samplingFrequency];
@@ -1831,6 +1841,12 @@ final class Decoder {
         // not enough data for a full header, so just mark header as invalid
         this.sigBytes = 0;
       }
+//      soundData.buffer.current = 0;
+    }
+
+    private void unread(SoundData soundData) throws IOException {
+      soundData.buffer.in.reset();
+      soundData.buffer.lastByte = this.sigBytes >>> 4;
     }
 
     private boolean isValid() {
