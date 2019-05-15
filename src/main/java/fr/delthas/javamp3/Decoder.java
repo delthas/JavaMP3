@@ -9,7 +9,7 @@ final class Decoder {
   private static final int[] BITRATE_LAYER_II = {0, 32000, 48000, 56000, 64000, 80000, 96000, 112000, 128000, 160000, 192000, 224000, 256000, 320000, 384000};
   private static final int[] BITRATE_LAYER_III = {0, 32000, 40000, 48000, 56000, 64000, 80000, 96000, 112000, 128000, 160000, 192000, 224000, 256000, 320000};
   private static final int[] SAMPLING_FREQUENCY = {44100, 48000, 32000};
-  private static final float[] SCALEFACTORS = {2.00000000000000f, 1.58740105196820f, 1.25992104989487f, 1.00000000000000f, 0.79370052598410f, 0.62996052494744f, 0.50000000000000f, 0.39685026299205f, 0.31498026247372f, 0.25000000000000f, 0.19842513149602f, 0.15749013123686f, 0.12500000000000f, 0.09921256574801f, 0.07874506561843f, 0.06250000000000f, 0.04960628287401f, 0.03937253280921f, 0.03125000000000f, 0.02480314143700f, 0.01968626640461f, 0.01562500000000f, 0.01240157071850f, 0.00984313320230f, 0.00781250000000f, 0.00620078535925f, 0.00492156660115f, 0.00390625000000f, 0.00310039267963f, 0.00246078330058f, 0.00195312500000f, 0.00155019633981f, 0.00123039165029f, 0.00097656250000f, 0.00077509816991f, 0.00061519582514f, 0.00048828125000f, 0.00038754908495f, 0.00030759791257f, 0.00024414062500f, 0.00019377454248f, 0.00015379895629f, 0.00012207031250f, 0.00009688727124f, 0.00007689947814f, 0.00006103515625f, 0.00004844363562f, 0.00003844973907f, 0.00003051757813f, 0.00002422181781f, 0.00001922486954f, 0.00001525878906f, 0.00001211090890f, 0.00000961243477f, 0.00000762939453f, 0.00000605545445f, 0.00000480621738f, 0.00000381469727f, 0.00000302772723f, 0.00000240310869f, 0.00000190734863f, 0.00000151386361f, 0.00000120155435f};
+  private static final float[] SCALEFACTORS = {2.00000000000000f, 1.58740105196820f, 1.25992104989487f, 1.00000000000000f, 0.79370052598410f, 0.62996052494744f, 0.50000000000000f, 0.39685026299205f, 0.31498026247372f, 0.25000000000000f, 0.19842513149602f, 0.15749013123686f, 0.12500000000000f, 0.09921256574801f, 0.07874506561843f, 0.06250000000000f, 0.04960628287401f, 0.03937253280921f, 0.03125000000000f, 0.02480314143700f, 0.01968626640461f, 0.01562500000000f, 0.01240157071850f, 0.00984313320230f, 0.00781250000000f, 0.00620078535925f, 0.00492156660115f, 0.00390625000000f, 0.00310039267963f, 0.00246078330058f, 0.00195312500000f, 0.00155019633981f, 0.00123039165029f, 0.00097656250000f, 0.00077509816991f, 0.00061519582514f, 0.00048828125000f, 0.00038754908495f, 0.00030759791257f, 0.00024414062500f, 0.00019377454248f, 0.00015379895629f, 0.00012207031250f, 0.00009688727124f, 0.00007689947814f, 0.00006103515625f, 0.00004844363562f, 0.00003844973907f, 0.00003051757813f, 0.00002422181781f, 0.00001922486954f, 0.00001525878906f, 0.00001211090890f, 0.00000961243477f, 0.00000762939453f, 0.00000605545445f, 0.00000480621738f, 0.00000381469727f, 0.00000302772723f, 0.00000240310869f, 0.00000190734863f, 0.00000151386361f, 0.00000120155435f, 0.0f};
   private static final int[] SCALEFACTOR_SIZES_LAYER_III = {
           0, 0, 0, 1, 0, 2, 0, 3,
           3, 0, 1, 1, 1, 2, 1, 3,
@@ -425,63 +425,92 @@ final class Decoder {
   }
   
   public static SoundData init(InputStream in) throws IOException {
-    SoundData soundData = new SoundData();
-    soundData.buffer = new Buffer(in);
-    soundData.buffer.lastByte = soundData.buffer.in.read();
-    if(!decodeFrame(soundData))
-      return null;
-    return soundData;
+    Buffer buffer = new Buffer(in);
+
+    while (buffer.lastByte != -1) {
+      SoundData soundData = new SoundData();
+      soundData.buffer = buffer;
+      try {
+        if (Decoder.decodeFrame(soundData)) {
+          // require directly adjacent second frame (actually allow up to two bytes
+          // away because of some quirks with Layer III decoding)
+          FrameHeader adjacentHeader = Decoder.findNextHeader(soundData, 1);
+          if (adjacentHeader != null) {
+            // found valid adjacent header: unwind inputstream to before the second header
+            adjacentHeader.unRead(soundData);
+            return soundData;
+          }
+        }
+      // exception during decoding: just try again from wherever the last
+      // decoder read blew up (on the next header read attempt the FrameHeader
+      // class will reset the pointer to the beginning of the byte)
+      // TODO it's possible that the failed frame decoding actually read past
+      // the true frame header, thus skipping the frame altogether. to counter
+      // such cases we'd need to implement another mark()/reset() pair before
+      // the main body of decodeFrame()
+      } catch (NegativeArraySizeException e) {
+      } catch (NullPointerException e) {
+      } catch (ArrayIndexOutOfBoundsException e) {
+      }
+    }
+    return null;
   }
+
+  private static FrameHeader findNextHeader(SoundData soundData) {
+    return Decoder.findNextHeader(soundData, Integer.MAX_VALUE);
+  }
+
+  private static FrameHeader findNextHeader(SoundData soundData, int maxBytesSkipped) {
+    // read header
+    try {
+      FrameHeader header = new FrameHeader(soundData);
+
+      int skipped = 0;
+      while (!header.isValid()) {
+        if (soundData.buffer.lastByte == -1 || skipped >= maxBytesSkipped) {
+          return null;
+        }
+        skipped++;
+        soundData.buffer.in.reset();
+        // skip to next byte
+        soundData.buffer.lastByte = soundData.buffer.in.read();
+        header.set(soundData);
+      }
+      return header;
+
+    } catch (IOException e) {
+      // read error or EOF
+      return null;
+    }
+  }
+
   
   public static boolean decodeFrame(SoundData soundData) throws IOException {
       if (soundData.buffer.lastByte == -1) {
         return false;
       }
       
-      while (true) {
-        int read;
-        do {
-          read = soundData.buffer.lastByte;
-          soundData.buffer.lastByte = soundData.buffer.in.read();
-          if (soundData.buffer.lastByte == -1) {
-            return false;
-          }
-        } while (read != 0b11111111);
-        if ((soundData.buffer.lastByte >>> 4) != 0b1111) {
-          soundData.buffer.lastByte = soundData.buffer.in.read();
-          if (soundData.buffer.lastByte == -1) {
-            return false;
-          }
-        } else {
-          break;
-        }
+      FrameHeader header = Decoder.findNextHeader(soundData);
+      if (header == null) {
+        return false;
       }
-  
-    soundData.buffer.current = 4;
-      
-      int id = read(soundData.buffer, 1);
-      int layer = read(soundData.buffer, 2);
-      int protectionBit = read(soundData.buffer, 1);
-      int bitrateIndex = read(soundData.buffer, 4);
-      int samplingFrequency = read(soundData.buffer, 2);
-      int paddingBit = read(soundData.buffer, 1);
-      int privateBit = read(soundData.buffer, 1);
-      int mode = read(soundData.buffer, 2);
-      int modeExtension = read(soundData.buffer, 2);
-      read(soundData.buffer, 4);
+
+//      if (header.bitrateIndex == 0) {
+//        System.err.println("MP3 decoder warning: files with free bitrate not supported");
+//      }
       
       if (soundData.frequency == -1) {
-        soundData.frequency = SAMPLING_FREQUENCY[samplingFrequency];
+        soundData.frequency = SAMPLING_FREQUENCY[header.samplingFrequency];
       }
       
       if (soundData.stereo == -1) {
-        if (mode == 0b11 /* single_channel */) {
+        if (header.mode == 0b11 /* single_channel */) {
           soundData.stereo = 0;
         } else {
           soundData.stereo = 1;
         }
-        if (layer == 0b01 /* layer III */) {
-          if (mode == 0b11 /* single_channel */) {
+        if (header.layer == 0b01 /* layer III */) {
+          if (header.mode == 0b11 /* single_channel */) {
             soundData.mainData = new byte[1024];
             soundData.store = new float[32 * 18];
             soundData.v = new float[1024];
@@ -492,7 +521,7 @@ final class Decoder {
           }
           soundData.mainDataReader = new MainDataReader(soundData.mainData);
         } else {
-          if (mode == 0b11 /* single_channel */) {
+          if (header.mode == 0b11 /* single_channel */) {
             soundData.synthOffset = new int[]{64};
             soundData.synthBuffer = new float[1024];
           } else {
@@ -502,54 +531,53 @@ final class Decoder {
         }
       }
       
-      int bound = modeExtension == 0b0 ? 4 : modeExtension == 0b01 ? 8 : modeExtension == 0b10 ? 12 : modeExtension == 0b11 ? 16 : -1;
+      int bound = header.modeExtension == 0b0 ? 4 : header.modeExtension == 0b01 ? 8 : header.modeExtension == 0b10 ? 12 : header.modeExtension == 0b11 ? 16 : -1;
       
-      if (protectionBit == 0) {
+      if (header.protectionBit == 0) {
         // TODO CRC CHECK
         read(soundData.buffer, 16);
       }
       
-      if (layer == 0b11 /* layer I */) {
+      if (header.layer == 0b11 /* layer I */) {
         float[] sampleDecoded = null;
-        if (mode == 0b11 /* single_channel */) {
+        if (header.mode == 0b11 /* single_channel */) {
           sampleDecoded = samples_I(soundData.buffer, 1, -1);
-        } else if (mode == 0b0 /* stereo */ || mode == 0b10 /* dual_channel */) {
+        } else if (header.mode == 0b0 /* stereo */ || header.mode == 0b10 /* dual_channel */) {
           sampleDecoded = samples_I(soundData.buffer, 2, -1);
-        } else if (mode == 0b01 /* intensity_stereo */) {
+        } else if (header.mode == 0b01 /* intensity_stereo */) {
           sampleDecoded = samples_I(soundData.buffer, 2, bound);
         }
-        if (mode == 0b11 /* single_channel */) {
+        if (header.mode == 0b11 /* single_channel */) {
           synth(soundData, sampleDecoded, soundData.synthOffset, soundData.synthBuffer, 1);
         } else {
           synth(soundData, sampleDecoded, soundData.synthOffset, soundData.synthBuffer, 2);
         }
-      } else if (layer == 0b10 /* layer II */) {
+      } else if (header.layer == 0b10 /* layer II */) {
         float[] sampleDecoded = null;
-        int bitrate = BITRATE_LAYER_II[bitrateIndex];
-        if (mode == 0b11 /* single_channel */) {
+        int bitrate = BITRATE_LAYER_II[header.bitrateIndex];
+        if (header.mode == 0b11 /* single_channel */) {
           sampleDecoded = samples_II(soundData.buffer, 1, -1, bitrate, soundData.frequency);
-        } else if (mode == 0b0 /* stereo */ || mode == 0b10 /* dual_channel */) {
+        } else if (header.mode == 0b0 /* stereo */ || header.mode == 0b10 /* dual_channel */) {
           sampleDecoded = samples_II(soundData.buffer, 2, -1, bitrate, soundData.frequency);
-        } else if (mode == 0b01 /* intensity_stereo */) {
+        } else if (header.mode == 0b01 /* intensity_stereo */) {
           sampleDecoded = samples_II(soundData.buffer, 2, bound, bitrate, soundData.frequency);
         }
-        if (mode == 0b11 /* single_channel */) {
+        if (header.mode == 0b11 /* single_channel */) {
           synth(soundData, sampleDecoded, soundData.synthOffset, soundData.synthBuffer, 1);
         } else {
           synth(soundData, sampleDecoded, soundData.synthOffset, soundData.synthBuffer, 2);
         }
-      } else if (layer == 0b01 /* layer III */) {
-        int frameSize = (144 * BITRATE_LAYER_III[bitrateIndex]) / SAMPLING_FREQUENCY[samplingFrequency] + paddingBit;
+      } else if (header.layer == 0b01 /* layer III */) {
+        int frameSize = (144 * BITRATE_LAYER_III[header.bitrateIndex]) / SAMPLING_FREQUENCY[header.samplingFrequency] + header.paddingBit;
         if (frameSize > 2000) {
           System.err.println("Frame too large! " + frameSize);
         }
-        samples_III(soundData.buffer, soundData.stereo == 1 ? 2 : 1, soundData.mainDataReader, frameSize, samplingFrequency, mode, modeExtension, soundData.store, soundData.v, soundData);
+        samples_III(soundData.buffer, soundData.stereo == 1 ? 2 : 1, soundData.mainDataReader, frameSize, header.samplingFrequency, header.mode, header.modeExtension, soundData.store, soundData.v, soundData);
       }
       
       if (soundData.buffer.current != 0) {
         read(soundData.buffer, 8 - soundData.buffer.current);
       }
-      
       return true;
   }
   
@@ -1737,7 +1765,7 @@ final class Decoder {
   private static int read(MainDataReader reader, int bits) {
     int number = 0;
     while (bits > 0) {
-      int advance = Integer.min(bits, 8 - reader.current);
+      int advance = Math.min(bits, 8 - reader.current);
       bits -= advance;
       reader.current += advance;
       number |= ((reader.array[reader.index] >>> (8 - reader.current)) & (0xFF >>> (8 - advance))) << bits;
@@ -1752,7 +1780,7 @@ final class Decoder {
   private static int read(Buffer buffer, int bits) throws IOException {
     int number = 0;
     while (bits > 0) {
-      int advance = Integer.min(bits, 8 - buffer.current);
+      int advance = Math.min(bits, 8 - buffer.current);
       bits -= advance;
       buffer.current += advance;
       if (bits != 0 && buffer.lastByte == -1) {
@@ -1786,6 +1814,62 @@ final class Decoder {
     buffer.lastByte = buffer.in.read();
   }
   
+  private static final class FrameHeader {
+
+    int sigBytes;
+    int version;
+    int layer;
+    int protectionBit;
+    int bitrateIndex;
+    int samplingFrequency;
+    int paddingBit;
+    int privateBit;
+    int mode;
+    int modeExtension;
+
+    private FrameHeader(SoundData soundData) throws IOException {
+      this.set(soundData);
+    }
+
+    private void set(SoundData soundData) throws IOException {
+      // previously aborted data reads might have left the Buffer off a byte
+      // boundary, so reset back to reading from the beginning of the byte
+      soundData.buffer.current = 0;
+      // read 4 byte header with possibility of rollback
+      soundData.buffer.in.mark(4);
+      try {
+        this.sigBytes = read(soundData.buffer, 12);
+        this.version = read(soundData.buffer, 1);
+        this.layer = read(soundData.buffer, 2);
+        this.protectionBit = read(soundData.buffer, 1);
+        this.bitrateIndex = read(soundData.buffer, 4);
+        this.samplingFrequency = read(soundData.buffer, 2);
+        this.paddingBit = read(soundData.buffer, 1);
+        this.privateBit = read(soundData.buffer, 1);
+        this.mode = read(soundData.buffer, 2);
+        this.modeExtension = read(soundData.buffer, 2);
+        // last 4 bits ignored
+        read(soundData.buffer, 4);
+      } catch (EOFException e) {
+        // not enough data for a full header, so just mark header as invalid
+        this.sigBytes = 0;
+      }
+    }
+
+    private void unRead(SoundData soundData) throws IOException {
+      soundData.buffer.in.reset();
+      soundData.buffer.lastByte = this.sigBytes >>> 4;
+    }
+
+    private boolean isValid() {
+      return this.sigBytes == 0b111111111111 &&
+        // version currently ignored, even though decoder only supports MPEG V1 (version == 1)
+        this.layer != 0b0 &&
+        this.bitrateIndex != 0b1111 &&
+        this.samplingFrequency != 0b11;
+    }
+  }
+
   private static final class MainDataReader {
     public final byte[] array;
     public int top = 0;
@@ -1802,8 +1886,9 @@ final class Decoder {
     public int current = 0;
     public int lastByte = -1;
     
-    public Buffer(InputStream inputStream) {
-      in = inputStream;
+    public Buffer(InputStream inputStream) throws IOException {
+      this.in = inputStream;
+      this.lastByte = this.in.read();
     }
   }
   
