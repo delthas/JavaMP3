@@ -425,19 +425,32 @@ final class Decoder {
   }
   
   public static SoundData init(InputStream in) throws IOException {
-    SoundData soundData = new SoundData();
-    soundData.buffer = new Buffer(in);
-    soundData.buffer.lastByte = soundData.buffer.in.read();
+    Buffer buffer = new Buffer(in);
 
-    // FIXME handle IOException thrown by decodeFrame during decoding of a bogus frame
-    if (Decoder.decodeFrame(soundData)) {
-      // require directly adjacent second frame (actually allow up to two bytes
-      // away because of some quirks with Layer III decoding)
-      FrameHeader adjacentHeader = Decoder.findNextHeader(soundData, 2);
-      if (adjacentHeader != null) {
-        // unwind inputstream to before the second header
-        adjacentHeader.unread(soundData);
-        return soundData;
+    while (buffer.lastByte != -1) {
+      SoundData soundData = new SoundData();
+      soundData.buffer = buffer;
+      try {
+        if (Decoder.decodeFrame(soundData)) {
+          // require directly adjacent second frame (actually allow up to two bytes
+          // away because of some quirks with Layer III decoding)
+          FrameHeader adjacentHeader = Decoder.findNextHeader(soundData, 1);
+          if (adjacentHeader != null) {
+            // found valid adjacent header: unwind inputstream to before the second header
+            adjacentHeader.unRead(soundData);
+            return soundData;
+          }
+        }
+      // exception during decoding: just try again from wherever the last
+      // decoder read blew up (on the next header read attempt the FrameHeader
+      // class will reset the pointer to the beginning of the byte)
+      // TODO it's possible that the failed frame decoding actually read past
+      // the true frame header, thus skipping the frame altogether. to counter
+      // such cases we'd need to implement another mark()/reset() pair before
+      // the main body of decodeFrame()
+      } catch (NegativeArraySizeException e) {
+      } catch (NullPointerException e) {
+      } catch (ArrayIndexOutOfBoundsException e) {
       }
     }
     return null;
@@ -463,7 +476,6 @@ final class Decoder {
         soundData.buffer.lastByte = soundData.buffer.in.read();
         header.set(soundData);
       }
-
       return header;
 
     } catch (IOException e) {
@@ -480,7 +492,6 @@ final class Decoder {
       
       FrameHeader header = Decoder.findNextHeader(soundData);
       if (header == null) {
-//        throw new IOException("MP3 decoder error: no valid frame header found");
         return false;
       }
 
@@ -567,7 +578,6 @@ final class Decoder {
       if (soundData.buffer.current != 0) {
         read(soundData.buffer, 8 - soundData.buffer.current);
       }
-      
       return true;
   }
   
@@ -1822,6 +1832,9 @@ final class Decoder {
     }
 
     private void set(SoundData soundData) throws IOException {
+      // previously aborted data reads might have left the Buffer off a byte
+      // boundary, so reset back to reading from the beginning of the byte
+      soundData.buffer.current = 0;
       // read 4 byte header with possibility of rollback
       soundData.buffer.in.mark(4);
       try {
@@ -1841,10 +1854,9 @@ final class Decoder {
         // not enough data for a full header, so just mark header as invalid
         this.sigBytes = 0;
       }
-//      soundData.buffer.current = 0;
     }
 
-    private void unread(SoundData soundData) throws IOException {
+    private void unRead(SoundData soundData) throws IOException {
       soundData.buffer.in.reset();
       soundData.buffer.lastByte = this.sigBytes >>> 4;
     }
@@ -1874,8 +1886,9 @@ final class Decoder {
     public int current = 0;
     public int lastByte = -1;
     
-    public Buffer(InputStream inputStream) {
-      in = inputStream;
+    public Buffer(InputStream inputStream) throws IOException {
+      this.in = inputStream;
+      this.lastByte = this.in.read();
     }
   }
   
