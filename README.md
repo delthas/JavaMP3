@@ -3,6 +3,10 @@
 ![](https://img.shields.io/maven-central/v/fr.delthas/javamp3.svg)
 # JavaMP3
 
+**I have no interest in maintainaing this library any more. Feel free to fork.**
+
+---
+
 **Currently supports MPEG-1 Layer I/II/III (that is, most MP1, MP2, and MP3 files)**
 
 ## Introduction
