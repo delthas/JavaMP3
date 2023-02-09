@@ -432,7 +432,17 @@ final class Decoder {
       return null;
     return soundData;
   }
-  
+
+    private static boolean isHeaderValid(int id, int layer, int protectionBit, int bitrateIndex, int samplingFrequency, int paddingBit,
+                                         int privateBit, int mode, int modeExtension, int copyright, int original, int emphasis) {
+        if (id == 1) return false;
+        if (layer < 1 || layer > 3) return false;
+        if (bitrateIndex < 0 || bitrateIndex > 14) return false;
+        if (samplingFrequency < 0 || samplingFrequency > 2) return false;
+        if (emphasis == 2) return false;
+        return mode == 1 || modeExtension == 0;
+    }
+
   public static boolean decodeFrame(SoundData soundData) throws IOException {
       if (soundData.buffer.lastByte == -1) {
         return false;
@@ -456,10 +466,10 @@ final class Decoder {
           break;
         }
       }
-  
-    soundData.buffer.current = 4;
-      
-      int id = read(soundData.buffer, 1);
+
+      soundData.buffer.current = 3;
+
+      int id = read(soundData.buffer, 2);
       int layer = read(soundData.buffer, 2);
       int protectionBit = read(soundData.buffer, 1);
       int bitrateIndex = read(soundData.buffer, 4);
@@ -468,38 +478,48 @@ final class Decoder {
       int privateBit = read(soundData.buffer, 1);
       int mode = read(soundData.buffer, 2);
       int modeExtension = read(soundData.buffer, 2);
-      read(soundData.buffer, 4);
-      
+      int copyright = read(soundData.buffer, 1);
+      int original = read(soundData.buffer, 1);
+      int emphasis = read(soundData.buffer, 2);
+
+      if (!isHeaderValid(id, layer, protectionBit, bitrateIndex, samplingFrequency, paddingBit, privateBit, mode, modeExtension, copyright, original, emphasis)) {
+          return decodeFrame(soundData); // Invalid header
+      }
+
       if (soundData.frequency == -1) {
         soundData.frequency = SAMPLING_FREQUENCY[samplingFrequency];
       }
       
       if (soundData.stereo == -1) {
-        if (mode == 0b11 /* single_channel */) {
-          soundData.stereo = 0;
-        } else {
-          soundData.stereo = 1;
-        }
-        if (layer == 0b01 /* layer III */) {
           if (mode == 0b11 /* single_channel */) {
-            soundData.mainData = new byte[1024];
-            soundData.store = new float[32 * 18];
-            soundData.v = new float[1024];
+              soundData.stereo = 0;
           } else {
-            soundData.mainData = new byte[2 * 1024];
-            soundData.store = new float[2 * 32 * 18];
-            soundData.v = new float[2 * 1024];
+              soundData.stereo = 1;
           }
-          soundData.mainDataReader = new MainDataReader(soundData.mainData);
-        } else {
-          if (mode == 0b11 /* single_channel */) {
-            soundData.synthOffset = new int[]{64};
-            soundData.synthBuffer = new float[1024];
+          if (layer == 0b01 /* layer III */) {
+              if (mode == 0b11 /* single_channel */) {
+                  soundData.mainData = new byte[1024];
+                  soundData.store = new float[32 * 18];
+                  soundData.v = new float[1024];
+              } else {
+                  soundData.mainData = new byte[2 * 1024];
+                  soundData.store = new float[2 * 32 * 18];
+                  soundData.v = new float[2 * 1024];
+              }
+              soundData.mainDataReader = new MainDataReader(soundData.mainData);
           } else {
-            soundData.synthOffset = new int[]{64, 64};
-            soundData.synthBuffer = new float[2 * 1024];
+              if (mode == 0b11 /* single_channel */) {
+                  soundData.synthOffset = new int[]{64};
+                  soundData.synthBuffer = new float[1024];
+              } else {
+                  soundData.synthOffset = new int[]{64, 64};
+                  soundData.synthBuffer = new float[2 * 1024];
+              }
           }
-        }
+      } else {
+          if (soundData.stereo == 0 && mode != 0b11) {
+              return decodeFrame(soundData); // Invalid header
+          }
       }
       
       int bound = modeExtension == 0b0 ? 4 : modeExtension == 0b01 ? 8 : modeExtension == 0b10 ? 12 : modeExtension == 0b11 ? 16 : -1;
@@ -919,9 +939,9 @@ final class Decoder {
         
         outer:
         while (true) {
-        
 
-  /* Only reorder short blocks */
+
+            /* Only reorder short blocks */
           if ((win_switch_flag[ch * 2 + gr] == 1) &&
                   (block_type[ch * 2 + gr] == 2)) { /* Short blocks */
             
@@ -1150,10 +1170,10 @@ final class Decoder {
               rawout[p] = sum * IMDCT_WINDOW_LAYER_III[bt * 36 + p];
             }
           }
-          
-          
 
-    /* Overlapp add with stored vector into main_data vector */
+
+
+            /* Overlapp add with stored vector into main_data vector */
           for (int i = 0; i < 18; i++) {
             
             is[ch * 2 * 576 + gr * 576 + sb * 18 + i] = rawout[i] + store[ch * 32 * 18 + sb * 18 + i];
